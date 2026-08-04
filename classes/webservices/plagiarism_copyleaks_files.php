@@ -135,11 +135,24 @@ class plagiarism_copyleaks_files extends external_api {
                 }
             } else if ($submission->submissiontype == 'quiz_answer') {
 
-                require_once($CFG->dirroot . '/mod/quiz/locallib.php');
-                $quizattempt = \quiz_attempt::create($submission->itemid);
+                if (class_exists('\\mod_quiz\\quiz_attempt')) {
+                    // Moodle 4.4+/5.x.
+                    $quizattempt = \mod_quiz\quiz_attempt::create($submission->itemid);
+                } else {
+                    // Older Moodle – versions prior to 4.4.
+                    require_once($CFG->dirroot . '/mod/quiz/attemptlib.php');
+                    $quizattempt = \quiz_attempt::create($submission->itemid);
+                }
                 foreach ($quizattempt->get_slots() as $slot) {
                     $questionattempt = $quizattempt->get_question_attempt($slot);
-                    if ($submission->identifier == sha1($questionattempt->get_response_summary())) {
+                    $identifier = sha1(
+                        'quiz_attempt user' . $quizattempt->get_userid() .
+                        ' cm' . $coursemodule->id .
+                        ' slot' . $slot .
+                        ' attempt' . $quizattempt->get_attempt_number()
+                    );
+                    if ($submission->identifier == $identifier ||
+                        $submission->identifier == sha1($questionattempt->get_response_summary())) {
                         $submittedtextcontent = $questionattempt->get_response_summary();
                         break;
                     }

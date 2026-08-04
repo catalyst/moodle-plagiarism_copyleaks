@@ -393,14 +393,25 @@ class plagiarism_copyleaks_submissions {
         $errorcode
     ) {
         global $DB;
-        $submission = $DB->get_record(
+        $submissions = $DB->get_records(
             'plagiarism_copyleaks_files',
             [
                 'cm' => $coursemoduleid,
                 'userid' => $moodleuserid,
                 'identifier' => $identifier,
-            ]
+            ],
+            'id DESC'
         );
+        $submission = reset($submissions);
+
+        // Handle Duplicates.
+        if ($submission && count($submissions) > 1) {
+            $DB->delete_records_select(
+                'plagiarism_copyleaks_files',
+                'cm = ? AND userid = ? AND identifier = ? AND id != ?',
+                [$coursemoduleid, $moodleuserid, $identifier, $submission->id]
+            );
+        }
 
         if (isset($submission) && $submission) {
             $submission->externalid = $scanid;

@@ -142,10 +142,38 @@ class plagiarism_copyleaks_submissiondisplay {
 
             $subitemid = 0;
             $subidentifier = '';
+            $oldsubidentifier = '';
 
             // Set identifier & itemid for files.
             if (!empty($submissionref["content"])) {
-                $subidentifier = sha1($submissionref["content"]);
+                $submissiontype = 'text_content';
+                if ($coursemodule->modname == 'quiz') {
+                    $submissiontype = 'quiz_answer';
+                }
+
+                if ($submissiontype === 'quiz_answer') {
+
+                    if (class_exists('\\mod_quiz\\quiz_attempt')) {
+                        // Moodle 4.4+/5.x.
+                        $attempt = \mod_quiz\quiz_attempt::create_from_usage_id($submissionref['area']);
+                    } else {
+                        // Older Moodle – versions prior to 4.4.
+                        global $CFG;
+                        require_once($CFG->dirroot . '/mod/quiz/attemptlib.php');
+                        $attempt = quiz_attempt::create_from_usage_id($submissionref['area']);
+                    }
+
+                    $subidentifier = sha1(
+                        'quiz_attempt user' . $attempt->get_userid() .
+                        ' cm' . $coursemodule->id .
+                        ' slot' . $submissionref["itemid"] .
+                        ' attempt' . $attempt->get_attempt_number()
+                    );
+                    $oldsubidentifier = sha1($submissionref["content"]);
+                } else {
+
+                    $subidentifier = sha1($submissionref["content"]);
+                }
             } else if (!empty($submissionref["file"])) {
                 $subitemid = $file->get_itemid();
                 $subidentifier = $file->get_pathnamehash();
@@ -215,8 +243,16 @@ class plagiarism_copyleaks_submissiondisplay {
 
                 // If plagiarismfile is null, try to init it again.
                 if (is_null($submittedfile)) {
-                    $query = "cm = ? AND identifier = ?";
+                    $query = "cm = ? AND (identifier = ?";
                     $queryparams = [$submissionref["cmid"], $subidentifier];
+
+                    // Add old identifier if exists.
+                    if (!empty($oldsubidentifier)) {
+                        $query .= " OR identifier = ?";
+                        $queryparams[] = $oldsubidentifier;
+                    }
+
+                    $query .= ")";
 
                     if (count($submissionusers) > 0) {
                         $query .= " AND userid IN (";
@@ -232,7 +268,7 @@ class plagiarism_copyleaks_submissiondisplay {
                         'plagiarism_copyleaks_files',
                         $query,
                         $queryparams,
-                        '',
+                        'id DESC',
                         '*',
                         0,
                         1

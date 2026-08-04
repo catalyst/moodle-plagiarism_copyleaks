@@ -109,7 +109,9 @@ class plagiarism_copyleaks_sendsubmissions extends \core\task\scheduled_task {
                         continue;
                     }
 
-                    if (\plagiarism_copyleaks_moduleconfig::is_course_module_request_queued_and_retryable($submission->cm)) {
+                    if (\plagiarism_copyleaks_moduleconfig::is_course_module_request_queued_and_retryable(
+                        $submission->cm, 'upsert-module'
+                    )) {
                         $copyleakscomms->handle_failed_to_submit($counterid);
                         continue;
                     }
@@ -203,11 +205,24 @@ class plagiarism_copyleaks_sendsubmissions extends \core\task\scheduled_task {
                         }
                     } else if ($submission->submissiontype == 'quiz_answer') {
                         try {
-                            require_once($CFG->dirroot . '/mod/quiz/locallib.php');
-                            $quizattempt = \quiz_attempt::create($submission->itemid);
+                            if (class_exists('\\mod_quiz\\quiz_attempt')) {
+                                // Moodle 4.4+/5.x.
+                                $quizattempt = \mod_quiz\quiz_attempt::create($submission->itemid);
+                            } else {
+                                // Older Moodle – versions prior to 4.4.
+                                require_once($CFG->dirroot . '/mod/quiz/attemptlib.php');
+                                $quizattempt = \quiz_attempt::create($submission->itemid);
+                            }
                             foreach ($quizattempt->get_slots() as $slot) {
                                 $questionattempt = $quizattempt->get_question_attempt($slot);
-                                if ($submission->identifier == sha1($questionattempt->get_response_summary())) {
+                                $identifier = sha1(
+                                    'quiz_attempt user' . $quizattempt->get_userid() .
+                                    ' cm' . $coursemodule->id .
+                                    ' slot' . $slot .
+                                    ' attempt' . $quizattempt->get_attempt_number()
+                                );
+                                if ($submission->identifier == $identifier ||
+                                    $submission->identifier == sha1($questionattempt->get_response_summary())) {
                                     $submittedtextcontent = $questionattempt->get_response_summary();
                                     break;
                                 }
